@@ -1,0 +1,5 @@
+run,data_source,sequence_length,hidden_size,learning_rate,epochs,accuracy,macro_f1,training_samples
+4,synthetic retail simulator,16,48,0.0007,1,0.8200980392156862,0.5257305829331523,30600
+2,synthetic retail simulator,12,48,0.001,1,0.8244152046783626,0.5148991233111743,34200
+3,synthetic retail simulator,12,64,0.0007,1,0.825,0.45725252137712985,34200
+1,synthetic retail simulator,8,32,0.001,1,0.808994708994709,0.35269110229313877,37800

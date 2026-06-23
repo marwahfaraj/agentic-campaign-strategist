@@ -1,0 +1,28 @@
+{
+  "data_source": "synthetic retail simulator",
+  "rows": 133310,
+  "households": 900,
+  "weeks": 53,
+  "categories": 10,
+  "sales_total": 2531994.3300000005,
+  "avg_transaction_value": 18.99328129922737,
+  "coupon_usage_rate": 0.20168779536418874,
+  "missing_values": {
+    "household_id": 0,
+    "week": 0,
+    "product_category": 0,
+    "quantity": 0,
+    "sales_value": 0,
+    "discount_value": 0,
+    "used_coupon": 0
+  },
+  "training_samples_after_sequence_build": 34200,
+  "activation_label_counts": {
+    "price_led_coupon": 22962,
+    "cross_sell_bundle": 4059,
+    "seasonal_spotlight": 2699,
+    "new_customer_onboarding": 2258,
+    "win_back_reminder": 1607,
+    "loyalty_reward": 615
+  }
+}

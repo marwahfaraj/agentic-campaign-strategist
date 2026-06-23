@@ -1,0 +1,11 @@
+joblib
+matplotlib
+numpy
+pandas
+plotly
+pyarrow
+pyreadr
+requests
+scikit-learn
+streamlit
+torch

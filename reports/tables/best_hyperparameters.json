@@ -1,0 +1,11 @@
+{
+  "run": 4,
+  "data_source": "synthetic retail simulator",
+  "sequence_length": 16,
+  "hidden_size": 48,
+  "learning_rate": 0.0007,
+  "epochs": 1,
+  "accuracy": 0.8200980392156862,
+  "macro_f1": 0.5257305829331523,
+  "training_samples": 30600
+}

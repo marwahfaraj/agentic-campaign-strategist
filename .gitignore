@@ -1,0 +1,12 @@
+.DS_Store
+.cursor/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.cache/
+.matplotlib_cache/
+.streamlit/secrets.toml
+data/raw/
+data/processed/
+artifacts/

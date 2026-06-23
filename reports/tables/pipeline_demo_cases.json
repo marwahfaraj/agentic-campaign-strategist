@@ -1,0 +1,119 @@
+[
+  {
+    "query": "Create me a segment of game day heavy shoppers for a seasonal campaign",
+    "objective": "Promote seasonal demand",
+    "parsed_logic": {
+      "categories": [
+        "beverages",
+        "snacks",
+        "meat",
+        "frozen"
+      ],
+      "recent_window": 16,
+      "lapsed": false,
+      "coupon_sensitive": false,
+      "loyal_or_heavy": true,
+      "new_customer": false,
+      "seasonal": true
+    },
+    "audience_households": 297,
+    "top_categories": [
+      "frozen",
+      "meat",
+      "produce"
+    ],
+    "activation_style": "Price-led coupon",
+    "confidence": 0.8650739789009094,
+    "suggested_message": "Limited-time savings: unlock a personalized offer on frozen.",
+    "risk_notes": [
+      "No major demo risk flags. In production, validate incrementality, policy, and fatigue limits."
+    ]
+  },
+  {
+    "query": "Find lapsed snack buyers for a win-back coupon campaign",
+    "objective": "Win back lapsed shoppers",
+    "parsed_logic": {
+      "categories": [
+        "snacks"
+      ],
+      "recent_window": 16,
+      "lapsed": true,
+      "coupon_sensitive": true,
+      "loyal_or_heavy": false,
+      "new_customer": false,
+      "seasonal": false
+    },
+    "audience_households": 16,
+    "top_categories": [
+      "snacks",
+      "breakfast",
+      "personal care"
+    ],
+    "activation_style": "Win-back reminder",
+    "confidence": 0.325978547334671,
+    "suggested_message": "We saved something for you: fresh deals on snacks this week.",
+    "risk_notes": [
+      "Audience is small; validate minimum reach and privacy thresholds before activation.",
+      "Model confidence is modest; consider A/B testing against a simple baseline campaign."
+    ]
+  },
+  {
+    "query": "Audience of loyal dairy shoppers for a weekend bundle campaign",
+    "objective": "Grow basket size",
+    "parsed_logic": {
+      "categories": [
+        "beverages",
+        "snacks",
+        "meat",
+        "bakery",
+        "dairy"
+      ],
+      "recent_window": 16,
+      "lapsed": false,
+      "coupon_sensitive": false,
+      "loyal_or_heavy": true,
+      "new_customer": false,
+      "seasonal": true
+    },
+    "audience_households": 297,
+    "top_categories": [
+      "frozen",
+      "meat",
+      "produce"
+    ],
+    "activation_style": "Price-led coupon",
+    "confidence": 0.8650739789009094,
+    "suggested_message": "Limited-time savings: unlock a personalized offer on frozen.",
+    "risk_notes": [
+      "No major demo risk flags. In production, validate incrementality, policy, and fatigue limits."
+    ]
+  },
+  {
+    "query": "Create a segment of new shoppers for a personal care onboarding campaign",
+    "objective": "Increase repeat purchase",
+    "parsed_logic": {
+      "categories": [
+        "personal care"
+      ],
+      "recent_window": 16,
+      "lapsed": false,
+      "coupon_sensitive": false,
+      "loyal_or_heavy": false,
+      "new_customer": true,
+      "seasonal": false
+    },
+    "audience_households": 5,
+    "top_categories": [
+      "beverages",
+      "breakfast",
+      "snacks"
+    ],
+    "activation_style": "Cross-sell bundle",
+    "confidence": 0.3530314564704895,
+    "suggested_message": "Complete the basket: pair beverages with a deal picked for your next trip.",
+    "risk_notes": [
+      "Audience is small; validate minimum reach and privacy thresholds before activation.",
+      "Model confidence is modest; consider A/B testing against a simple baseline campaign."
+    ]
+  }
+]
