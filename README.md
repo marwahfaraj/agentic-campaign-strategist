@@ -2,10 +2,6 @@
 
 ![Agentic Retail Campaign Intelligence](assets/agentic_retail_campaign_hero.png)
 
-**Author:** Marwah Faraj  
-**Project type:** Individual capstone  
-**Repository purpose:** Final project codebase, reproducible analysis, and demo application
-
 Capstone prototype for advising whether an AI-generated retail audience fits a marketer's campaign objective and which activation style should be used.
 
 The project is inspired by retail marketing workflows where a marketer already has a campaign goal and asks for an audience segment in natural language. Instead of rebuilding the segmentation agent, this prototype focuses on the post-segmentation decision:
@@ -16,7 +12,6 @@ The project is inspired by retail marketing workflows where a marketer already h
 
 Agentic segmentation systems are useful when they can translate marketer intent into an audience. The next layer of value is decision support: understanding customer journey signals inside that audience, validating fit against the known campaign objective, and recommending the most appropriate activation style.
 
-This project uses public or synthetic retail transaction data to avoid any proprietary company data.
 
 ## What It Builds
 
