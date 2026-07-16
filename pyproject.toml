@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "campaign-strategist"
+version = "0.1.0"
+description = "Audience-to-Campaign Fit Advisor for Agentic Retail Segmentation (AAI-590 Capstone, Group 5)"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]
