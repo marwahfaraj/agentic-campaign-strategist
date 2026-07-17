@@ -16,19 +16,17 @@ from __future__ import annotations
 
 import pandas as pd
 
-# Draft thresholds - owned/tuned by the labeling workstream (ticket #7).
+# Tuned thresholds: prefer cleaner, more separable classes over maximizing sample count.
 DEFAULT_LABEL_CONFIG: dict[str, float | int | set[int]] = {
-    # onboarding: household first became active recently
-    "onboarding_max_tenure_weeks": 8,
-    # win-back: was active in the input window, silent in the future window
-    "win_back_min_window_active": 3,
-    # price-led: any coupon redemption, or a high average discount share, in the future
-    "price_led_min_discount_rate": 0.15,
-    # seasonal: future overlaps seasonal weeks AND spend clearly above the household norm
-    "seasonal_weeks": set(range(46, 54)),
-    "seasonal_min_spend_lift": 1.2,
-    # loyalty: sustained future activity at or above the household's usual spend
-    "loyalty_min_future_active": 2,
+    "onboarding_max_tenure_weeks": 6,
+    "win_back_min_window_active": 4,
+    # Prefer coupon redemptions; plain discount must be clearly strong.
+    "price_led_min_discount_rate": 0.28,
+    "seasonal_weeks": set(range(20, 28)) | set(range(46, 54)),
+    "seasonal_min_spend_lift": 1.30,
+    "cross_sell_min_new_spend_share": 0.22,
+    "loyalty_min_future_active": 3,
+    "loyalty_min_spend_lift": 1.05,
 }
 
 
@@ -39,15 +37,7 @@ def label_future_window(
     category_columns: list[str],
     config: dict | None = None,
 ) -> str | None:
-    """Assign an activation-style label from future behavior, or None to abstain.
-
-    Parameters
-    ----------
-    window : weekly rows of the input sequence (past, fed to the model).
-    future : weekly rows of the prediction horizon (never fed to the model).
-    first_active_week : first week this household was ever active.
-    category_columns : weekly spend columns used for new-category detection.
-    """
+    """Assign an activation-style label from future behavior, or None to abstain."""
     cfg = {**DEFAULT_LABEL_CONFIG, **(config or {})}
 
     end_week = int(window["week"].max())
@@ -63,31 +53,55 @@ def label_future_window(
     if window_active >= cfg["win_back_min_window_active"] and future_active == 0:
         return "win_back_reminder"
 
-    # No future activity and not a win-back case: no observable signal
     if future_active == 0:
         return None
 
-    # 3. Price-led coupon: responds to price incentives in the future
+    window_spend = _active_mean_spend(window)
+    future_spend = _active_mean_spend(future)
+    future_discount = _active_mean(future, "discount_rate")
     future_coupon = float(future["coupon_rate"].max())
-    future_discount = float(future["discount_rate"].mean())
+
+    # 3. Price-led coupon: clear future promotion response
     if future_coupon >= 1 or future_discount >= cfg["price_led_min_discount_rate"]:
         return "price_led_coupon"
 
-    # 4. Seasonal spotlight: elevated spend during seasonal weeks
-    window_spend = float(window["sales_value"].mean())
-    future_spend = float(future["sales_value"].mean())
+    # 4. Seasonal spotlight: elevated spend in seasonal weeks
     in_season = any(int(wk) in cfg["seasonal_weeks"] for wk in future["week"])
-    if in_season and future_spend > window_spend * cfg["seasonal_min_spend_lift"]:
+    if (
+        in_season
+        and window_spend > 0
+        and future_spend > window_spend * cfg["seasonal_min_spend_lift"]
+    ):
         return "seasonal_spotlight"
 
-    # 5. Cross-sell bundle: adopts a category not bought in the input window
+    # 5. Cross-sell bundle: meaningful adoption of a new category
     bought_before = window[category_columns].sum(axis=0) > 0
-    bought_future = future[category_columns].sum(axis=0) > 0
-    if bool((~bought_before & bought_future).any()):
-        return "cross_sell_bundle"
+    future_cat_spend = future[category_columns].sum(axis=0)
+    bought_future = future_cat_spend > 0
+    new_cats = (~bought_before) & bought_future
+    if bool(new_cats.any()):
+        new_spend = float(future_cat_spend.loc[new_cats].sum())
+        total_future_spend = float(future["sales_value"].sum())
+        if total_future_spend > 0 and (new_spend / total_future_spend) >= cfg["cross_sell_min_new_spend_share"]:
+            return "cross_sell_bundle"
 
-    # 6. Loyalty reward: sustained activity at/above the household norm
-    if future_active >= cfg["loyalty_min_future_active"] and future_spend >= window_spend:
+    # 6. Loyalty reward: sustained, slightly elevated future activity
+    if (
+        future_active >= cfg["loyalty_min_future_active"]
+        and window_spend > 0
+        and future_spend >= window_spend * cfg["loyalty_min_spend_lift"]
+    ):
         return "loyalty_reward"
 
     return None  # abstain
+
+
+def _active_mean_spend(frame: pd.DataFrame) -> float:
+    return _active_mean(frame, "sales_value")
+
+
+def _active_mean(frame: pd.DataFrame, column: str) -> float:
+    active = frame.loc[frame["is_active"] > 0, column]
+    if len(active) == 0:
+        return 0.0
+    return float(active.mean())

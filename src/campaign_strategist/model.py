@@ -13,26 +13,47 @@ from .config import CAMPAIGN_CLASSES
 
 
 class JourneyLSTM(nn.Module):
-    def __init__(self, n_features: int, hidden_size: int = 48, n_classes: int = len(CAMPAIGN_CLASSES)):
+    """Bidirectional LSTM with attention pooling over weekly timesteps."""
+
+    def __init__(
+        self,
+        n_features: int,
+        hidden_size: int = 96,
+        num_layers: int = 2,
+        dropout: float = 0.25,
+        n_classes: int = len(CAMPAIGN_CLASSES),
+    ):
         super().__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
         self.lstm = nn.LSTM(
             input_size=n_features,
             hidden_size=hidden_size,
-            num_layers=1,
+            num_layers=num_layers,
             batch_first=True,
-            dropout=0.0,
+            dropout=dropout if num_layers > 1 else 0.0,
+            bidirectional=True,
+        )
+        encoded = hidden_size * 2
+        self.attention = nn.Sequential(
+            nn.Linear(encoded, encoded // 2),
+            nn.Tanh(),
+            nn.Linear(encoded // 2, 1),
         )
         self.classifier = nn.Sequential(
-            nn.LayerNorm(hidden_size),
-            nn.Linear(hidden_size, 32),
+            nn.LayerNorm(encoded),
+            nn.Linear(encoded, 64),
             nn.ReLU(),
-            nn.Dropout(0.15),
-            nn.Linear(32, n_classes),
+            nn.Dropout(dropout),
+            nn.Linear(64, n_classes),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        _, (hidden, _) = self.lstm(x)
-        return self.classifier(hidden[-1])
+        outputs, _ = self.lstm(x)
+        scores = self.attention(outputs).squeeze(-1)
+        weights = torch.softmax(scores, dim=1)
+        pooled = torch.sum(outputs * weights.unsqueeze(-1), dim=1)
+        return self.classifier(pooled)
 
 
 @dataclass
@@ -125,8 +146,13 @@ def save_model(model: JourneyLSTM, path: str) -> None:
     torch.save(model.state_dict(), path)
 
 
-def load_model(path: str, n_features: int) -> JourneyLSTM:
-    model = JourneyLSTM(n_features=n_features)
+def load_model(
+    path: str,
+    n_features: int,
+    hidden_size: int = 96,
+    num_layers: int = 2,
+) -> JourneyLSTM:
+    model = JourneyLSTM(n_features=n_features, hidden_size=hidden_size, num_layers=num_layers)
     state = torch.load(path, map_location="cpu")
     model.load_state_dict(state)
     model.eval()

@@ -1,4 +1,4 @@
-model,accuracy,macro_f1,notes
-lstm_sequence_model,0.833187134502924,0.5396962398233695,Deep learning model trained from scratch on weekly customer journey sequences.
-random_forest,0.7194444444444444,0.49834902967381095,Traditional ML baseline using flattened sequence summary features.
-knn_classifier,0.7755847953216374,0.4663316555763102,Traditional ML baseline using flattened sequence summary features.
+model,accuracy,macro_f1
+LSTM (tuned),0.40746244015189037,0.458012363596199
+random_forest,0.4254581475978207,0.44876650838320176
+knn,0.3491827637444279,0.3622280141472283

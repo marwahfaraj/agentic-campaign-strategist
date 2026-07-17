@@ -355,10 +355,48 @@ def _build_weekly_customer_frame(data: pd.DataFrame, categories: list[str]) -> p
     weekly["log_sales"] = np.log1p(weekly["sales_value"])
     weekly["log_quantity"] = np.log1p(weekly["quantity"])
     weekly["log_trips"] = np.log1p(weekly["trips"])
+    # Calendar features are known at prediction time (not label leakage).
+    week_angle = 2.0 * np.pi * (weekly["week"].astype(float) % 52.0) / 52.0
+    weekly["week_sin"] = np.sin(week_angle)
+    weekly["week_cos"] = np.cos(week_angle)
+    weekly = weekly.sort_values(["household_id", "week"]).reset_index(drop=True)
+    weekly["weeks_since_active"] = _causal_weeks_since_active(weekly)
+    weekly["active_streak"] = _causal_active_streak(weekly)
     total_category_sales = weekly[categories].sum(axis=1).replace(0, np.nan)
     for category in categories:
         weekly[f"share_{category}"] = (weekly[category] / total_category_sales).fillna(0.0)
     return weekly
+
+
+def _causal_weeks_since_active(weekly: pd.DataFrame) -> np.ndarray:
+    values = np.zeros(len(weekly), dtype=np.float32)
+    last_pos: dict[object, int] = {}
+    household_pos: dict[object, int] = {}
+    for i, (household_id, is_active) in enumerate(
+        zip(weekly["household_id"].tolist(), weekly["is_active"].tolist())
+    ):
+        local_i = household_pos.get(household_id, 0)
+        household_pos[household_id] = local_i + 1
+        if household_id in last_pos:
+            values[i] = float(local_i - last_pos[household_id])
+        else:
+            values[i] = 0.0 if is_active > 0 else float(local_i)
+        if is_active > 0:
+            last_pos[household_id] = local_i
+    return values
+
+
+def _causal_active_streak(weekly: pd.DataFrame) -> np.ndarray:
+    values = np.zeros(len(weekly), dtype=np.float32)
+    streak: dict[object, float] = {}
+    for i, (household_id, is_active) in enumerate(
+        zip(weekly["household_id"].tolist(), weekly["is_active"].tolist())
+    ):
+        current = streak.get(household_id, 0.0)
+        current = current + 1.0 if is_active > 0 else 0.0
+        streak[household_id] = current
+        values[i] = current
+    return values
 
 
 def _feature_names(categories: list[str]) -> list[str]:
@@ -369,6 +407,10 @@ def _feature_names(categories: list[str]) -> list[str]:
         "log_trips",
         "discount_rate",
         "coupon_rate",
+        "week_sin",
+        "week_cos",
+        "weeks_since_active",
+        "active_streak",
     ] + [f"share_{category}" for category in categories]
 
 
