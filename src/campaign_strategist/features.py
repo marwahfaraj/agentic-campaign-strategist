@@ -7,6 +7,105 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
 from .config import CAMPAIGN_CLASSES, CATEGORY_ALIASES, OCCASION_CATEGORY_BUNDLES
+from .labels import label_future_window
+
+
+@dataclass
+class SequenceDataset:
+    """Unscaled sequence samples with future-window labels.
+
+    Scaling is intentionally NOT applied here: the scaler must be fit on the
+    training split only (see notebook 03), so this dataset stays raw.
+    """
+
+    x: "np.ndarray"          # (n_samples, sequence_length, n_features), unscaled
+    y: "np.ndarray"          # (n_samples,) label indices into CAMPAIGN_CLASSES
+    sample_index: pd.DataFrame
+    feature_names: list[str]
+    categories: list[str]
+    n_abstained: int
+
+
+def build_sequence_dataset(
+    transactions: pd.DataFrame,
+    sequence_length: int = 12,
+    prediction_horizon: int = 4,
+    top_n_categories: int = 8,
+    min_window_active_weeks: int = 2,
+    label_config: dict | None = None,
+) -> SequenceDataset:
+    """Build weekly journey sequences with future-window weak labels.
+
+    Differences from the legacy ``build_feature_bundle``:
+    - labels come from the future horizon only (see ``labels.py``), never
+      from signals inside the input window;
+    - samples whose input window has fewer than ``min_window_active_weeks``
+      active weeks are skipped (households a marketer would not target);
+    - samples with no clear future signal are abstained (excluded);
+    - no scaling is applied (fit the scaler on the training split instead).
+    """
+    data = transactions.copy()
+    data["product_category"] = data["product_category"].fillna("unknown").astype(str).str.lower()
+
+    top_categories = (
+        data.groupby("product_category")["sales_value"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(top_n_categories)
+        .index.tolist()
+    )
+    data["modeled_category"] = np.where(
+        data["product_category"].isin(top_categories), data["product_category"], "other"
+    )
+    modeled_categories = top_categories + ["other"]
+
+    weekly = _build_weekly_customer_frame(data, modeled_categories)
+    feature_names = _feature_names(modeled_categories)
+
+    samples: list[np.ndarray] = []
+    label_ids: list[int] = []
+    index_rows: list[dict[str, object]] = []
+    n_abstained = 0
+
+    for household_id, group in weekly.groupby("household_id", sort=False):
+        group = group.sort_values("week").reset_index(drop=True)
+        if len(group) < sequence_length + prediction_horizon:
+            continue
+        active = group.loc[group["is_active"] > 0, "week"]
+        first_active_week = int(active.min()) if len(active) else 999
+
+        for end_pos in range(sequence_length - 1, len(group) - prediction_horizon):
+            window = group.iloc[end_pos - sequence_length + 1 : end_pos + 1]
+            if window["is_active"].sum() < min_window_active_weeks:
+                continue
+            future = group.iloc[end_pos + 1 : end_pos + 1 + prediction_horizon]
+            label_name = label_future_window(
+                window, future, first_active_week, modeled_categories, config=label_config
+            )
+            if label_name is None:
+                n_abstained += 1
+                continue
+            samples.append(window[feature_names].to_numpy(dtype=np.float32))
+            label_ids.append(CAMPAIGN_CLASSES.index(label_name))
+            index_rows.append(
+                {
+                    "household_id": household_id,
+                    "end_week": int(window["week"].max()),
+                    "label": label_name,
+                }
+            )
+
+    if not samples:
+        raise RuntimeError("No labeled samples were created. Check inputs and label thresholds.")
+
+    return SequenceDataset(
+        x=np.asarray(samples, dtype=np.float32),
+        y=np.asarray(label_ids, dtype=np.int64),
+        sample_index=pd.DataFrame(index_rows),
+        feature_names=feature_names,
+        categories=modeled_categories,
+        n_abstained=n_abstained,
+    )
 
 
 @dataclass

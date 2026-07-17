@@ -1,5 +1,9 @@
 # Audience-to-Campaign Fit Advisor for Agentic Retail Segmentation
 
+**AAI-590 Capstone Project — Group 5**
+Matt Hashemi, Marwah Faraj, Rebecca Cloe
+Master of Science in Applied Artificial Intelligence, University of San Diego
+
 ![Agentic Retail Campaign Intelligence](assets/agentic_retail_campaign_hero.png)
 
 Capstone prototype for advising whether an AI-generated retail audience fits a marketer's campaign objective and which activation style should be used.
