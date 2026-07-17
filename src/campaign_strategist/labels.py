@@ -22,7 +22,9 @@ DEFAULT_LABEL_CONFIG: dict[str, float | int | set[int]] = {
     "win_back_min_window_active": 4,
     # Prefer coupon redemptions; plain discount must be clearly strong.
     "price_led_min_discount_rate": 0.28,
-    "seasonal_weeks": set(range(20, 28)) | set(range(46, 54)),
+    # Holiday period only: weekly sales run ~1.08x the annual mean in weeks 46-53,
+    # while weeks 20-27 (inherited from the synthetic simulator) show no lift (0.99x).
+    "seasonal_weeks": set(range(46, 54)),
     "seasonal_min_spend_lift": 1.30,
     "cross_sell_min_new_spend_share": 0.22,
     "loyalty_min_future_active": 3,
