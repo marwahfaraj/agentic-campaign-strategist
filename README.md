@@ -8,25 +8,9 @@ Master of Science in Applied Artificial Intelligence, University of San Diego
 
 Capstone prototype for advising whether an AI-generated retail audience fits a marketer's campaign objective and which activation style should be used.
 
-The project is inspired by retail marketing workflows where a marketer already has a campaign goal and asks for an audience segment in natural language. Instead of rebuilding the segmentation agent, this prototype focuses on the post-segmentation decision:
+Agentic segmentation systems can translate a marketer's natural-language request into an audience segment. This project focuses on the decision that comes after: once the audience exists, does it fit the campaign objective, which activation style should be used, and why? The prototype analyzes household purchase journeys inside a segment and recommends one of six activation styles, with a plain-language rationale.
 
-> Once the audience exists, does it fit the campaign objective, what activation style should be used, and why?
-
-## Why This Project
-
-Agentic segmentation systems are useful when they can translate marketer intent into an audience. The next layer of value is decision support: understanding customer journey signals inside that audience, validating fit against the known campaign objective, and recommending the most appropriate activation style.
-
-
-## What It Builds
-
-- A retail data pipeline using the public `completejourney` grocery dataset when available.
-- A synthetic retail fallback dataset for demos and development.
-- Customer journey sequences from weekly purchase behavior.
-- A PyTorch LSTM model trained from scratch to classify campaign activation style.
-- Traditional ML baselines for comparison (KNN and random forest).
-- Hyperparameter optimization for the LSTM.
-- A Streamlit app that simulates a SegmentAI output and evaluates audience-to-campaign fit.
-- A free local Ollama + Mistral explanation layer that turns model signals into marketer-friendly guidance.
+**Research question:** Can customer purchase sequences be used to evaluate audience-to-campaign fit and recommend activation styles for AI-generated retail segments in a way that is accurate, explainable, and useful to marketers?
 
 ## Activation Style Classes
 
@@ -39,68 +23,74 @@ The model predicts one of six activation styles:
 - Loyalty reward
 - Seasonal spotlight
 
-## Project Architecture
+## Architecture
 
 ![Audience-to-Campaign Fit Advisor Architecture](assets/audience_campaign_fit_architecture.png)
 
 ```text
-Public/synthetic retail data
+Complete Journey retail transactions
         ↓
-Weekly customer journey sequences
+Data cleaning and EDA                  (notebook 01)
         ↓
-PyTorch LSTM strategy classifier
+Weekly journey sequences + future-window labels   (notebook 02)
         ↓
-Segment-level probability aggregation
+Baselines (KNN, Random Forest) + BiLSTM w/ attention   (notebook 03)
         ↓
-Marketer-facing Streamlit app
+Hyperparameter optimization + error analysis      (notebook 04)
         ↓
-Audience-to-campaign fit guidance + explanation
+Marketer-facing Streamlit app with explanations   (app.py)
 ```
+
+## Dataset
+
+The primary dataset is *The Complete Journey* from 84.51°: one year of household-level grocery transactions (purchase week, product category, quantity, sales value, discounts, coupon use). It is accessed through the data files of the open-source `completejourney` R package:
+
+- https://github.com/bradleyboehmke/completejourney
+- https://bradleyboehmke.github.io/completejourney/
+
+This project uses the published transaction sample (75,000 transactions, ~2,400 households, 53 weeks) joined with the full product table. Data files are downloaded automatically on the first run of notebook 01 and are not committed to the repository.
 
 ## Setup
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pip install -e .
 ```
 
-## Reproduce The Full Capstone Pipeline
+## Reproduce the Pipeline
 
-Run these commands from the project root to regenerate all analysis artifacts used in the report and presentation.
+The analysis lives in four notebooks that must run **in order**, because each one reads the outputs of the previous one. In VS Code or Jupyter, open each notebook and use Restart + Run All:
 
-Fast reproducible run (synthetic data):
+| Order | Notebook | What it does | Outputs |
+| --- | --- | --- | --- |
+| 1 | `notebooks/01_data_cleaning_eda.ipynb` | Load data, quality checks, EDA, outlier decisions | `data/processed/transactions_clean.parquet` |
+| 2 | `notebooks/02_features_and_labels.ipynb` | Weekly journey sequences, future-window weak labels | `sequences_x.npy`, `labels_y.npy`, `sample_index.parquet` |
+| 3 | `notebooks/03_baselines_and_lstm.ipynb` | Grouped split, baselines, LSTM training with validation curves | model + split artifacts in `artifacts/` |
+| 4 | `notebooks/04_optimization_and_evaluation.ipynb` | Grid search, final model, confusion matrix, error analysis | figures and tables in `reports/` |
 
-```bash
-python scripts/01_data_cleaning_eda.py --synthetic-only
-python scripts/02_model_training_evaluation.py --synthetic-only --epochs 3
-python scripts/03_model_optimization.py --synthetic-only --epochs 1
-python scripts/04_pipeline_analysis.py
-streamlit run app.py
-```
+Important: if anything in `src/` or the label rules changes, re-run the chain from notebook 02 onward. Notebooks 03 and 04 read saved arrays, not live code.
 
-Public dataset run (falls back to synthetic data if download/parsing fails):
+## Leakage-Safe Design
 
-```bash
-python scripts/01_data_cleaning_eda.py
-python scripts/02_model_training_evaluation.py --epochs 6
-python scripts/03_model_optimization.py --epochs 2
-python scripts/04_pipeline_analysis.py
-streamlit run app.py
-```
+Three design decisions distinguish the final pipeline from an earlier prototype:
 
-After running the pipeline, review these generated outputs:
+1. **Future-window labels.** Activation-style labels are decided by household behavior in the 4 weeks *after* each input sequence, never by signals inside the sequence itself. Samples with no clear future signal are abstained (excluded), which is standard weak-supervision practice.
+2. **Grouped splits.** Train/validation/test splits are made by household, so overlapping windows from one household can never appear on both sides of a split.
+3. **Train-only scaling.** The feature scaler is fit on the training split only.
 
-| Output type | Location |
-| --- | --- |
-| EDA figures | `reports/figures/eda_*.png` |
-| Model evaluation figures | `reports/figures/model_*.png`, `reports/figures/optimization_*.png` |
-| Metrics tables | `reports/tables/*.csv`, `reports/tables/*.json` |
-| Analysis summaries | `reports/*_summary.md` |
-| Trained model artifacts | `artifacts/` (generated after training) |
-| Cleaned transactions | `data/processed/` (generated after EDA) |
+## Results (held-out test set)
 
-## Run The Demo App Only
+| Model | Accuracy | Macro-F1 |
+| --- | --- | --- |
+| **BiLSTM + attention (tuned)** | **0.44** | **0.50** |
+| Random Forest | 0.40 | 0.44 |
+| KNN | 0.37 | 0.40 |
+
+With six classes, the majority-class baseline sits near 0.29 accuracy. The sequence model outperforms both tabular baselines on both metrics. Full per-class metrics, confusion matrices, and error analysis are in notebook 04 and `reports/`.
+
+## Run the Demo App
 
 ```bash
 streamlit run app.py
@@ -114,9 +104,9 @@ Find lapsed snack buyers for a win-back coupon campaign
 Audience of loyal dairy shoppers for a weekend bundle campaign
 ```
 
-## Optional Free Local LLM
+### Optional local LLM explanations
 
-The app can use **Mistral 7B through Ollama** for marketer-friendly explanations. This is free and local, so it does not require a paid API key.
+The app can use Mistral through Ollama (free, local, no API key) to turn model outputs into marketer-friendly text. A deterministic fallback explanation is used when Ollama is not running.
 
 ```bash
 brew install ollama
@@ -124,138 +114,39 @@ ollama pull mistral
 ollama serve
 ```
 
-Then turn on **Use local Ollama Mistral if running** in the Streamlit sidebar.
+Then enable **Use local Ollama Mistral if running** in the Streamlit sidebar.
 
-If Mistral is too heavy for your laptop:
+## Repository Guide
 
-```bash
-ollama pull llama3.2:3b
-export OLLAMA_MODEL=llama3.2:3b
-```
-
-## Capstone Framing
-
-**Title:** Audience-to-Campaign Fit Advisor for Agentic Retail Segmentation
-
-**Research question:** Can customer purchase sequences be used to evaluate audience-to-campaign fit and recommend activation styles for AI-generated retail segments in a way that is accurate, explainable, and useful to marketers?
-
-## Final Deliverable Locations
-
-This repository supports all three major capstone deliverables:
-
-| Deliverable | Location in this repo |
+| Path | Purpose |
 | --- | --- |
-| Final project codebase | Root directory, `src/`, `scripts/`, `app.py` |
-| Report draft materials | `reports/drafts/` |
-| Generated report figures/tables | `reports/figures/`, `reports/tables/`, `reports/*_summary.md` |
-| Presentation outline and suggested visuals | `reports/drafts/presentation_outline.md`, `assets/`, `reports/figures/` |
-| Requirement mapping document | `docs/capstone_requirements_map.md` |
-
-Suggested presentation visuals:
-
-- `assets/audience_campaign_fit_architecture.png`
-- `reports/figures/eda_top_categories.png`
-- `reports/figures/eda_weekly_sales.png`
-- `reports/figures/model_comparison.png`
-- `reports/figures/model_confusion_matrix.png`
-- `reports/figures/optimization_macro_f1.png`
-
-## Complete File Guide
-
-### Application and entry points
-
-| File | Purpose |
-| --- | --- |
-| `app.py` | Streamlit demo app for audience-to-campaign fit advising |
-| `requirements.txt` | Python dependencies |
-| `.gitignore` | Excludes local environments, caches, and generated runtime files |
-
-### Runnable capstone scripts
-
-| File | Capstone element |
-| --- | --- |
-| `scripts/01_data_cleaning_eda.py` | Data cleaning and exploratory data analysis |
-| `scripts/02_model_training_evaluation.py` | Model training, baseline comparison, evaluation figures |
-| `scripts/03_model_optimization.py` | Hyperparameter search and optimization summary |
-| `scripts/04_pipeline_analysis.py` | Representative pipeline input/output analysis |
-
-### Core Python package (`src/campaign_strategist/`)
-
-| File | Purpose |
-| --- | --- |
-| `__init__.py` | Package metadata |
-| `config.py` | Paths, campaign classes, category aliases, dataset URLs |
-| `data.py` | Public dataset loading, normalization, synthetic data generation |
-| `features.py` | Weekly journey features, weak labels, audience simulation logic |
-| `model.py` | PyTorch LSTM model, training, prediction, model save/load |
-| `baselines.py` | KNN and random forest baseline models |
-| `strategy.py` | Campaign-fit recommendation and optional Ollama explanation |
-| `train.py` | Training pipeline used by scripts and the app |
-| `viz.py` | Shared report visualization styling |
-
-### Documentation and drafts
-
-| File | Purpose |
-| --- | --- |
-| `docs/capstone_requirements_map.md` | Maps syllabus requirements to repository files |
-| `reports/drafts/introduction_draft.md` | Module 1 introduction draft |
-| `reports/drafts/project_management_plan.md` | Module 2 project plan draft |
-| `reports/drafts/methods_outline.md` | Methods section outline |
-| `reports/drafts/results_outline.md` | Results section outline |
-| `reports/drafts/presentation_outline.md` | Final presentation outline |
-
-### Generated analysis outputs (`reports/`)
-
-| File | Purpose |
-| --- | --- |
-| `reports/data_cleaning_eda_summary.md` | EDA written summary |
-| `reports/model_training_evaluation_summary.md` | Model training and evaluation summary |
-| `reports/model_optimization_summary.md` | Optimization experiment summary |
-| `reports/pipeline_analysis_summary.md` | End-to-end demo case summary |
-| `reports/tables/model_comparison.csv` | LSTM vs baseline metrics |
-| `reports/tables/optimization_results.csv` | Hyperparameter search results |
-| `reports/tables/pipeline_demo_cases.csv` | Example marketer requests and model outputs |
-
-### Assets
-
-| File | Purpose |
-| --- | --- |
-| `assets/agentic_retail_campaign_hero.png` | README and presentation hero image |
-| `assets/audience_campaign_fit_architecture.png` | Workflow architecture diagram |
+| `notebooks/01–04` | The full analysis pipeline (see table above) |
+| `src/campaign_strategist/config.py` | Paths, campaign classes, category aliases |
+| `src/campaign_strategist/data.py` | Dataset download, normalization, synthetic fallback for tests |
+| `src/campaign_strategist/features.py` | Weekly journey frame and sequence dataset builder |
+| `src/campaign_strategist/labels.py` | Future-window weak supervision rules and thresholds |
+| `src/campaign_strategist/model.py` | PyTorch BiLSTM with attention pooling |
+| `src/campaign_strategist/training.py` | Grouped splits, train-only scaling, training loop, metrics |
+| `src/campaign_strategist/baselines.py` | KNN and Random Forest baselines |
+| `src/campaign_strategist/strategy.py` | Campaign-fit recommendation and Ollama explanation layer |
+| `app.py` | Streamlit demo application |
+| `reports/figures/`, `reports/tables/` | Generated figures and metric tables used in the report |
+| `docs/` | Capstone requirement mapping and drafts |
+| `assets/` | Diagrams and illustrations for README, report, and slides |
 
 ## Capstone Requirement Coverage
 
-This repository is organized to satisfy the required codebase elements from the final project instructions:
-
-| Requirement | How this repo satisfies it |
+| Requirement | Where |
 | --- | --- |
-| Data cleaning | `scripts/01_data_cleaning_eda.py`, `src/campaign_strategist/data.py` |
-| Exploratory data analysis | `scripts/01_data_cleaning_eda.py`, `reports/figures/eda_*.png` |
-| Model/pipeline design | `src/campaign_strategist/features.py`, `src/campaign_strategist/model.py`, `app.py` |
-| Model training | `src/campaign_strategist/train.py`, `scripts/02_model_training_evaluation.py` |
-| Deep learning model | PyTorch LSTM in `src/campaign_strategist/model.py` |
-| Model optimization | `scripts/03_model_optimization.py`, `reports/tables/optimization_results.csv` |
-| Model/pipeline analysis | `scripts/04_pipeline_analysis.py`, `reports/pipeline_analysis_summary.md` |
-| Well-organized codebase | Separate `scripts/`, `src/`, `reports/`, and `docs/` directories |
-| README documentation | This file |
+| Data cleaning | Notebook 01, `src/.../data.py` |
+| Exploratory data analysis | Notebook 01, `reports/figures/eda_*.png` |
+| Feature engineering / pipeline design | Notebook 02, `src/.../features.py`, `src/.../labels.py` |
+| Deep learning model (from scratch) | Notebook 03, `src/.../model.py` |
+| Baseline comparison | Notebooks 03–04, `src/.../baselines.py` |
+| Model optimization | Notebook 04, `reports/tables/optimization_results.csv` |
+| Model/pipeline analysis | Notebook 04 (confusion matrix, error analysis) |
+| Deployment prototype | `app.py` |
 
-See `docs/capstone_requirements_map.md` for additional detail.
+## Academic Notes
 
-## Data Notes
-
-The primary public dataset is the `completejourney` retail grocery dataset from 84.51°, available through the open-source R package:
-
-- https://github.com/bradleyboehmke/completejourney
-- https://bradleyboehmke.github.io/completejourney/
-
-The project does not require, store, or reference any Walmart data, code, dashboards, customers, or internal architecture.
-
-## Academic Note
-
-The current labels are weak supervision labels generated from interpretable purchase journey rules. This keeps the project feasible for a 7-week capstone while still requiring deep learning model training from scratch. A future extension could replace weak labels with real campaign response labels where approved data is available.
-
-## Repository Notes
-
-- Commit and push this repository using your own GitHub account so authorship reflects your work.
-- Do not commit local environments (`.venv/`), caches, or generated secrets.
-- Generated model artifacts and processed data can be regenerated using the pipeline commands above.
+Labels are weak-supervision labels derived from interpretable future-window rules, not real campaign response data; this keeps the project feasible in seven weeks while still requiring deep learning training from scratch. Known limitations are discussed in the final report, including the abstention rate of the labeling rules, the near-deterministic onboarding class, and the use of the published transaction sample rather than the full dataset. A production extension would replace weak labels with actual campaign response outcomes.
