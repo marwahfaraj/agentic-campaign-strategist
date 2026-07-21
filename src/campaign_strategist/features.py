@@ -220,12 +220,23 @@ def filter_segment_samples(
     bundle: FeatureBundle,
     max_rows: int = 500,
 ) -> pd.DataFrame:
+    """Legacy wrapper kept for the old FeatureBundle path."""
+    return filter_segment_rows(query, transactions, bundle.sample_index, bundle.categories, max_rows)
+
+
+def filter_segment_rows(
+    query: str,
+    transactions: pd.DataFrame,
+    sample_index: pd.DataFrame,
+    categories: list[str],
+    max_rows: int = 500,
+) -> pd.DataFrame:
     """Simulate an upstream SegmentAI audience result using simple interpretable filters."""
     query_lower = query.lower()
     latest_week = int(transactions["week"].max())
-    parsed = parse_segment_request(query_lower, bundle.categories)
+    parsed = parse_segment_request(query_lower, categories)
     requested_categories = parsed["categories"]
-    sample_index = bundle.sample_index.copy()
+    sample_index = sample_index.copy()
 
     candidate_households = set(sample_index["household_id"].astype(str))
 

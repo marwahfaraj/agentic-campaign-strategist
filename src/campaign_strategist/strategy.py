@@ -15,9 +15,42 @@ class CampaignRecommendation:
     strategy_label: str
     confidence: float
     explanation: str
+    explanation_source: str  # "ollama" or "deterministic"
     suggested_message: str
     risk_notes: list[str]
     probability_table: list[dict[str, object]]
+
+
+def ollama_status() -> dict[str, object]:
+    """Check whether a local Ollama server is reachable and which model is configured."""
+    host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+    model = os.getenv("OLLAMA_MODEL", "mistral")
+    try:
+        response = requests.get(f"{host}/api/tags", timeout=2)
+        response.raise_for_status()
+        available = [m.get("name", "") for m in response.json().get("models", [])]
+        model_ready = any(name.split(":")[0] == model.split(":")[0] for name in available)
+        return {"running": True, "model": model, "model_ready": model_ready, "available_models": available}
+    except (requests.RequestException, ValueError):
+        return {"running": False, "model": model, "model_ready": False, "available_models": []}
+
+
+def warm_up_ollama() -> None:
+    """Ask the server to load the model into memory without generating text.
+
+    Fire-and-forget: the server keeps loading even if our short timeout fires,
+    so the first real explanation request is fast instead of a cold start.
+    """
+    host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+    model = os.getenv("OLLAMA_MODEL", "mistral")
+    try:
+        requests.post(
+            f"{host}/api/generate",
+            json={"model": model, "keep_alive": "30m"},
+            timeout=1,
+        )
+    except requests.RequestException:
+        pass
 
 
 def recommend_campaign(
@@ -39,11 +72,12 @@ def recommend_campaign(
     ]
     probability_table = sorted(probability_table, key=lambda row: row["probability"], reverse=True)
 
-    explanation = _generate_explanation(
+    explanation, explanation_source = _generate_explanation(
         strategy_key=strategy_key,
         segment_profile=segment_profile,
         marketer_query=marketer_query,
         objective=objective,
+        probability_table=probability_table,
         use_llm=use_llm,
     )
     return CampaignRecommendation(
@@ -51,6 +85,7 @@ def recommend_campaign(
         strategy_label=CAMPAIGN_LABELS[strategy_key],
         confidence=float(mean_probs[top_idx]),
         explanation=explanation,
+        explanation_source=explanation_source,
         suggested_message=_suggested_message(strategy_key, segment_profile),
         risk_notes=_risk_notes(segment_profile, float(mean_probs[top_idx])),
         probability_table=probability_table,
@@ -62,12 +97,15 @@ def _generate_explanation(
     segment_profile: dict[str, object],
     marketer_query: str,
     objective: str,
+    probability_table: list[dict[str, object]],
     use_llm: bool,
-) -> str:
+) -> tuple[str, str]:
     if use_llm:
-        generated = _try_ollama_explanation(strategy_key, segment_profile, marketer_query, objective)
+        generated = _try_ollama_explanation(
+            strategy_key, segment_profile, marketer_query, objective, probability_table
+        )
         if generated:
-            return generated
+            return generated, "ollama"
 
     top_categories = ", ".join(segment_profile.get("top_categories", [])[:3]) or "mixed categories"
     coupon_rate = segment_profile.get("coupon_rate", 0.0)
@@ -75,12 +113,13 @@ def _generate_explanation(
     avg_weekly_spend = segment_profile.get("avg_weekly_spend", 0.0)
     base = CAMPAIGN_DESCRIPTIONS[strategy_key]
 
-    return (
+    deterministic = (
         f"{base} The segment's strongest category signals are {top_categories}. "
         f"Average weekly spend is about ${avg_weekly_spend:,.2f}, coupon usage is {coupon_rate:.1%}, "
         f"and {recent_activity_rate:.1%} of households show recent activity. "
         f"For the objective '{objective}', this strategy balances model confidence with marketer-readable actionability."
     )
+    return deterministic, "deterministic"
 
 
 def _try_ollama_explanation(
@@ -88,6 +127,7 @@ def _try_ollama_explanation(
     segment_profile: dict[str, object],
     marketer_query: str,
     objective: str,
+    probability_table: list[dict[str, object]],
 ) -> str | None:
     """Use a free local Ollama model when available.
 
@@ -96,16 +136,36 @@ def _try_ollama_explanation(
     """
     ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
     ollama_model = os.getenv("OLLAMA_MODEL", "mistral")
-    prompt = f"""
-You are a retail marketing data science assistant. Explain whether the audience fits the marketer's campaign objective and which activation style should be used.
 
-Marketer query: {marketer_query}
-Objective: {objective}
+    top3 = ", ".join(
+        f"{row['strategy']} ({row['probability']:.0%})" for row in probability_table[:3]
+    )
+    profile_lines = "\n".join(
+        [
+            f"- Households in audience: {segment_profile.get('households', 0):,}",
+            f"- Average weekly spend: ${float(segment_profile.get('avg_weekly_spend', 0.0)):,.2f}",
+            f"- Coupon usage rate: {float(segment_profile.get('coupon_rate', 0.0)):.1%}",
+            f"- Recent activity rate: {float(segment_profile.get('recent_activity_rate', 0.0)):.1%}",
+            f"- Top categories: {', '.join(segment_profile.get('top_categories', [])[:5]) or 'n/a'}",
+        ]
+    )
+    prompt = f"""You are a retail marketing analyst. A deep learning model scored an AI-generated \
+customer audience against six campaign activation styles.
+
+Marketer's audience request: {marketer_query}
+Marketer's campaign objective: {objective}
+
+Audience profile:
+{profile_lines}
+
+Model's top predictions: {top3}
 Recommended activation style: {CAMPAIGN_LABELS[strategy_key]}
-Segment profile: {segment_profile}
 
-Write 3 concise sentences for a marketer. Include whether the audience fits the objective, what signal supports the activation style, and what to validate before launch. Do not mention that you are an AI model.
-"""
+Write exactly 3 concise sentences for the marketer:
+1. Whether this audience fits the stated campaign objective.
+2. Which behavioral signals support the recommended activation style.
+3. One concrete thing to validate before launching the campaign.
+Use plain marketing language. Do not mention AI, models, or probabilities in a technical way."""
     try:
         response = requests.post(
             f"{ollama_host}/api/generate",
@@ -113,12 +173,15 @@ Write 3 concise sentences for a marketer. Include whether the audience fits the 
                 "model": ollama_model,
                 "prompt": prompt,
                 "stream": False,
+                # Keep the model in memory so later requests answer in seconds.
+                "keep_alive": "30m",
                 "options": {
                     "temperature": 0.25,
-                    "num_predict": 180,
+                    "num_predict": 220,
                 },
             },
-            timeout=45,
+            # First request after a cold start must load ~4GB of weights.
+            timeout=120,
         )
         response.raise_for_status()
         text = response.json().get("response", "").strip()
